@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import typing
 from datetime import datetime
 from typing import List, Optional, Union
 
@@ -50,7 +53,7 @@ class Broadcast(TypesBaseModel):
     group_image_background_uri: str
     thread_subtype: int
     number_of_members: int
-    creator_igid: str | None
+    creator_igid: typing.Optional[str]
     creator_username: str
 
 

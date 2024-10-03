@@ -194,7 +194,7 @@ class ClientPublicTestCase(BaseClientMixin, unittest.TestCase):
                 self.assertEqual(obj[key], value)
 
     def test_media_info_gql(self):
-        media_pk = self.cl.media_pk_from_url("https://www.instagram.com/p/BVDOOolFFxg/")
+        media_pk = self.cl.media_pk_from_url("https://www.instagram.com/p/CzXHp-_LSkc/")
         m = self.cl.media_info_gql(media_pk)
         self.assertIsInstance(m, Media)
         media = {

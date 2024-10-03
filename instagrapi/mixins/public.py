@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import urllib
 
 try:
     from simplejson.errors import JSONDecodeError
@@ -122,6 +123,54 @@ class PublicRequestMixin:
                     raise e
                 continue
 
+    def public_request_v2(
+            self,
+            url,
+            data=None,
+            params=None,
+            headers=None,
+            return_json=False,
+            retries_count=3,
+            retries_timeout=2,
+    ):
+        kwargs = dict(
+            data=data,
+            params=params,
+            headers=headers,
+            return_json=return_json,
+        )
+        assert retries_count <= 10, "Retries count is too high"
+        assert retries_timeout <= 600, "Retries timeout is too high"
+        for iteration in range(retries_count):
+            try:
+                if self.delay_range:
+                    random_delay(delay_range=self.delay_range)
+                return self._send_public_request_v2(url, **kwargs)
+            except (
+                    ClientLoginRequired,
+                    ClientNotFoundError,
+                    ClientBadRequestError,
+            ) as e:
+                raise e  # Stop retries
+            # except JSONDecodeError as e:
+            #     raise ClientJSONDecodeError(e, respones=self.last_public_response)
+            except ClientError as e:
+                msg = str(e)
+                if all(
+                        (
+                                isinstance(e, ClientConnectionError),
+                                "SOCKSHTTPSConnectionPool" in msg,
+                                "Max retries exceeded with url" in msg,
+                                "Failed to establish a new connection" in msg,
+                        )
+                ):
+                    raise e
+                if retries_count > iteration + 1:
+                    time.sleep(retries_timeout)
+                else:
+                    raise e
+                continue
+
     def _send_public_request(
         self,
         url,
@@ -141,6 +190,7 @@ class PublicRequestMixin:
             time.sleep(self.request_timeout)
         try:
             if data is not None:  # POST
+
                 response = self.public.data(
                     url,
                     data=data,
@@ -148,6 +198,105 @@ class PublicRequestMixin:
                     proxies=self.public.proxies,
                     timeout=timeout,
                 )
+            else:  # GET
+                response = self.public.get(
+                    url,
+                    params=params,
+                    proxies=self.public.proxies,
+                    stream=stream,
+                    timeout=timeout,
+                )
+
+            if stream:
+                return response
+
+            expected_length = int(response.headers.get("Content-Length") or 0)
+            actual_length = response.raw.tell()
+            if actual_length < expected_length:
+                raise ClientIncompleteReadError(
+                    "Incomplete read ({} bytes read, {} more expected)".format(
+                        actual_length, expected_length
+                    ),
+                    response=response,
+                )
+
+            self.public_request_logger.debug(
+                "public_request %s: %s", response.status_code, response.url
+            )
+
+            self.public_request_logger.info(
+                "[%s] [%s] %s %s",
+                self.public.proxies.get("https"),
+                response.status_code,
+                "POST" if data else "GET",
+                response.url,
+            )
+            self.last_public_response = response
+            response.raise_for_status()
+            if return_json:
+                self.last_public_json = response.json()
+                return self.last_public_json
+            return response.text
+
+        except JSONDecodeError as e:
+            if "/login/" in response.url:
+                raise ClientLoginRequired(e, response=response)
+
+            self.public_request_logger.error(
+                "Status %s: JSONDecodeError in public_request (url=%s) >>> %s",
+                response.status_code,
+                response.url,
+                response.text,
+            )
+            raise ClientJSONDecodeError(
+                "JSONDecodeError {0!s} while opening {1!s}".format(e, url),
+                response=response,
+            )
+        except requests.HTTPError as e:
+            if e.response.status_code == 401:
+                # HTTPError: 401 Client Error: Unauthorized for url: https://i.instagram.com/api/v1/users....
+                raise ClientUnauthorizedError(e, response=e.response)
+            elif e.response.status_code == 403:
+                raise ClientForbiddenError(e, response=e.response)
+            elif e.response.status_code == 400:
+                raise ClientBadRequestError(e, response=e.response)
+            elif e.response.status_code == 429:
+                raise ClientThrottledError(e, response=e.response)
+            elif e.response.status_code == 404:
+                raise ClientNotFoundError(e, response=e.response)
+            raise ClientError(e, response=e.response)
+
+        except requests.ConnectionError as e:
+            raise ClientConnectionError("{} {}".format(e.__class__.__name__, str(e)))
+        finally:
+            self.last_response_ts = time.time()
+
+    def _send_public_request_v2(
+            self,
+            url,
+            data=None,
+            params=None,
+            headers=None,
+            return_json=False,
+            stream=None,
+            timeout=None,
+    ):
+        self.public_requests_count += 1
+        if headers:
+            self.public.headers.update(headers)
+        if self.last_response_ts and (time.time() - self.last_response_ts) < 1.0:
+            time.sleep(1.0)
+        if self.request_timeout:
+            time.sleep(self.request_timeout)
+        try:
+            if data is not None:  # POST
+                response = self.public.request("POST",
+                                               url,
+                                               headers=headers,
+                                               data=data,
+                                               proxies=self.public.proxies,
+                                               timeout=timeout,
+                                               )
             else:  # GET
                 response = self.public.get(
                     url,
@@ -285,6 +434,49 @@ class PublicRequestMixin:
                 "Error: '{}'. Message: '{}'".format(e, message), response=e.response
             )
 
+    def public_graphql_request_v2(
+            self,
+            variables,
+            short_code=None,
+            document_id=None,
+            headers=None,
+    ):
+        try:
+            headers = {
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://www.instagram.com',
+                'referer': f"https://www.instagram.com/p/{short_code}/",
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+            }
+
+            encode_variables = urllib.parse.quote(json.dumps(variables, separators=(",", ":")))
+            body_json = self.public_request_v2(
+                self.GRAPHQL_PUBLIC_API_URL,
+                data=f"variables={encode_variables}&doc_id={document_id}",
+                headers=headers,
+                return_json=True,
+            )
+
+            if body_json.get("status", None) != "ok":
+                raise ClientGraphqlError(
+                    "Unexpected status '{}' in response. Message: '{}'".format(
+                        body_json.get("status", None), body_json.get("message", None)
+                    ),
+                    response=body_json,
+                )
+
+            return body_json["data"]
+
+        except ClientBadRequestError as e:
+            message = None
+            try:
+                body_json = e.response.json()
+                message = body_json.get("message", None)
+            except JSONDecodeError:
+                pass
+            raise ClientGraphqlError(
+                "Error: '{}'. Message: '{}'".format(e, message), response=e.response
+            )
 
 class TopSearchesPublicMixin:
     def top_search(self, query):

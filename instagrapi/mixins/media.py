@@ -196,21 +196,20 @@ class MediaMixin:
         """
         variables = {
             "shortcode": shortcode,
-            "child_comment_count": 3,
-            "fetch_comment_count": 40,
-            "parent_comment_count": 24,
-            "has_threaded_comments": False,
+            "fetch_tagged_user_count": None,
+            "hoisted_comment_id": None,
+            "hoisted_reply_id": None,
         }
-        data = self.public_graphql_request(
-            variables, query_hash="477b65a610463740ccdb83135b2014db"
+        data = self.public_graphql_request_v2(
+            variables, short_code=shortcode, document_id=8845758582119845
         )
-        if not data.get("shortcode_media"):
+        if not data.get("xdt_shortcode_media"):
             raise MediaNotFound(media_pk=media_pk, **data)
-        if data["shortcode_media"]["location"] and self.authorization:
-            data["shortcode_media"]["location"] = self.location_complete(
-                extract_location(data["shortcode_media"]["location"])
+        if data["xdt_shortcode_media"]["location"] and self.authorization:
+            data["xdt_shortcode_media"]["location"] = self.location_complete(
+                extract_location(data["xdt_shortcode_media"]["location"])
             ).dict()
-        return extract_media_gql(data["shortcode_media"])
+        return extract_media_gql(data["xdt_shortcode_media"])
 
     def media_info_v1(self, media_pk: str) -> Media:
         """
