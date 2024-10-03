@@ -36,7 +36,7 @@ from .types import (
 )
 from .utils import InstagramIdCodec, json_value
 
-MEDIA_TYPES_GQL = {"GraphImage": 1, "GraphVideo": 2, "GraphSidecar": 8, "StoryVideo": 2}
+MEDIA_TYPES_GQL = {"XDTGraphImage": 1, "XDTGraphVideo": 2, "XDTGraphSidecar": 8, "XDTStoryVideo": 2}
 
 
 def extract_media_v1(data):
