@@ -446,15 +446,17 @@ class PublicRequestMixin:
                 'content-type': 'application/x-www-form-urlencoded',
                 'origin': 'https://www.instagram.com',
                 'referer': f"https://www.instagram.com/p/{short_code}/",
-                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+                'X-Requested-With': 'XMLHttpRequest',
             }
 
-            encode_variables = urllib.parse.quote(json.dumps(variables, separators=(",", ":")))
             body_json = self.public_request_v2(
                 self.GRAPHQL_PUBLIC_API_URL,
-                data=f"variables={encode_variables}&doc_id={document_id}",
                 headers=headers,
                 return_json=True,
+                params={
+                    'doc_id': document_id,
+                    'variables': json.dumps(variables, separators=(',', ':')),
+                }
             )
 
             if body_json.get("status", None) != "ok":

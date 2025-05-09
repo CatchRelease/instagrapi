@@ -196,9 +196,10 @@ class MediaMixin:
         """
         variables = {
             "shortcode": shortcode,
-            "fetch_tagged_user_count": None,
-            "hoisted_comment_id": None,
-            "hoisted_reply_id": None,
+            "child_comment_count": 3,
+            "fetch_comment_count": 40,
+            "parent_comment_count": 24,
+            "has_threaded_comments": True,
         }
         data = self.public_graphql_request_v2(
             variables, short_code=shortcode, document_id=8845758582119845
